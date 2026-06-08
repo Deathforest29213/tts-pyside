@@ -6,7 +6,6 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 MODEL_DIR = PROJECT_ROOT / "models" / "kokoro"
 

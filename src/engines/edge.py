@@ -1,6 +1,7 @@
 from pathlib import Path
+from typing import cast
 
-from .base import SynthesisOptions, TTSEngine
+from .base import SynthesisOptions, TTSEngine, VoiceInfo
 
 
 class EdgeTTSEngine(TTSEngine):
@@ -29,7 +30,7 @@ class EdgeTTSEngine(TTSEngine):
         )
         await communicate.save(str(output_path))
 
-    async def list_voices(self) -> list[dict]:
+    async def list_voices(self) -> list[VoiceInfo]:
         try:
             import edge_tts
         except ImportError as exc:
@@ -37,4 +38,4 @@ class EdgeTTSEngine(TTSEngine):
                 "Falta edge-tts. Instala dependencias con: pip install -r requirements.txt"
             ) from exc
 
-        return await edge_tts.list_voices()
+        return cast(list[VoiceInfo], await edge_tts.list_voices())

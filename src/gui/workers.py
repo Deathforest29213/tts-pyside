@@ -4,6 +4,7 @@ import asyncio
 import shutil
 import time
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import QObject, Signal, Slot
 
@@ -111,7 +112,9 @@ class ConversionWorker(QObject):
             self.log.emit(f"Generando archivo {index + 1}/{len(prepared)}: {item['relativePath']}")
 
             try:
-                elapsed = await self._convert_prepared_file(index, item, engine, options, total_chunks, completed_units)
+                elapsed = await self._convert_prepared_file(
+                    index, item, engine, options, total_chunks, completed_units
+                )
                 completed_units += max(1, len(item["chunks"]))
                 self.progress.emit(int(completed_units * 100 / total_chunks))
                 self.fileFinished.emit(index, item["outputPath"], format_duration(elapsed))
@@ -129,7 +132,9 @@ class ConversionWorker(QObject):
                 self.progress.emit(int(completed_units * 100 / total_chunks))
 
         self.progress.emit(100)
-        self.log.emit(f"Tiempo total del lote: {format_duration(time.perf_counter() - batch_started)}")
+        self.log.emit(
+            f"Tiempo total del lote: {format_duration(time.perf_counter() - batch_started)}"
+        )
 
     async def _convert_prepared_file(
         self,
@@ -150,8 +155,10 @@ class ConversionWorker(QObject):
         manifest_path = temp_dir / "manifest.json"
 
         previous_manifest = read_manifest(manifest_path)
-        previous_chunks = {chunk.get("index"): chunk for chunk in previous_manifest.get("chunks", [])}
-        manifest = {
+        previous_chunks = {
+            chunk.get("index"): chunk for chunk in previous_manifest.get("chunks", [])
+        }
+        manifest: dict[str, Any] = {
             "source": str(source_path),
             "output": str(output_path),
             "engine": "kokoro",
@@ -188,7 +195,9 @@ class ConversionWorker(QObject):
                 chunk_started = time.perf_counter()
                 await engine.synthesize_to_file(chunk, chunk_path, options)
                 elapsed = time.perf_counter() - chunk_started
-                self.log.emit(f"Chunk {chunk_index}/{len(item['chunks'])}: ok ({format_duration(elapsed)})")
+                self.log.emit(
+                    f"Chunk {chunk_index}/{len(item['chunks'])}: ok ({format_duration(elapsed)})"
+                )
             else:
                 self.log.emit(f"Chunk {chunk_index}/{len(item['chunks'])}: reutilizado")
 

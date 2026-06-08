@@ -8,7 +8,6 @@ from PySide6.QtWidgets import QApplication
 
 from .bridge import AppBridge
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 QML_DIR = PROJECT_ROOT / "src" / "qml"
 

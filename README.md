@@ -5,8 +5,8 @@ CLI simple para convertir apuntes Markdown en pistas MP3 de estudio.
 ## Instalacion
 
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
+conda env create -f environment.yml
+conda activate tts-pyside
 ```
 
 ## Uso rapido
@@ -14,7 +14,7 @@ python -m venv .venv
 Coloca tus archivos `.md` en `input/` y ejecuta. El motor por defecto es Kokoro local:
 
 ```powershell
-.\.venv\Scripts\python main.py convert
+python main.py convert
 ```
 
 ## GUI QML
@@ -22,20 +22,35 @@ Coloca tus archivos `.md` en `input/` y ejecuta. El motor por defecto es Kokoro 
 Para abrir la interfaz grafica con PySide6 + QML:
 
 ```powershell
-.\.venv\Scripts\python gui_main.py
+python gui_main.py
+```
+
+## Calidad de codigo
+
+El proyecto usa `pre-commit` con Ruff y mypy. Instala el hook una vez dentro del entorno Conda:
+
+```powershell
+conda activate tts-pyside
+pre-commit install
+```
+
+Para ejecutar todas las validaciones manualmente:
+
+```powershell
+pre-commit run --all-files
 ```
 
 Tambien puedes pasar un archivo o carpeta especifica:
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input\clase1.md --out .\output
-.\.venv\Scripts\python main.py convert .\input --recursive --speed 0.95
+python main.py convert .\input\clase1.md --out .\output
+python main.py convert .\input --recursive --speed 0.95
 ```
 
 Si pasas una carpeta dentro de `input/`, el CLI crea la misma carpeta dentro de `output/` y genera un MP3 por cada Markdown:
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input\Unidad_2 --out .\output
+python main.py convert .\input\Unidad_2 --out .\output
 ```
 
 Resultado esperado:
@@ -48,20 +63,20 @@ input\Unidad_2\tema_2.md -> output\Unidad_2\tema_2.mp3
 Para incluir subcarpetas:
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input\Unidad_2 --out .\output --recursive
+python main.py convert .\input\Unidad_2 --out .\output --recursive
 ```
 
 Para listar voces Kokoro en espanol:
 
 ```powershell
-.\.venv\Scripts\python main.py voices --engine kokoro --locale es
+python main.py voices --engine kokoro --locale es
 ```
 
 Para usar Edge online:
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input --engine edge --voice es-CL-LorenzoNeural
-.\.venv\Scripts\python main.py voices --engine edge --locale es-CL
+python main.py convert .\input --engine edge --voice es-CL-LorenzoNeural
+python main.py voices --engine edge --locale es-CL
 ```
 
 ## Notas

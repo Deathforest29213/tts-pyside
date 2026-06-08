@@ -5,17 +5,16 @@ import subprocess
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Property, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog
 
 from ..audio import resolve_ffmpeg
-from ..engines.kokoro import DEFAULT_MODEL_PATH, DEFAULT_VOICES_PATH
+from ..engines.kokoro import DEFAULT_MODEL_PATH
 from .file_scanner import mirror_output_path, scan_markdown_files
 from .model_manager import ModelDownloadWorker, model_status, models_installed
-from .settings import GuiSettings, PROJECT_ROOT
+from .settings import PROJECT_ROOT, GuiSettings
 from .workers import ConversionWorker
-
 
 KOKORO_VOICES = ["ef_dora", "em_alex", "em_santa"]
 
@@ -76,11 +75,11 @@ class AppBridge(QObject):
     def outputBasePath(self) -> str:
         return self._output_base_path
 
-    @Property("QVariantList", notify=filesChanged)
+    @Property("QVariantList", notify=filesChanged)  # type: ignore[arg-type]
     def files(self) -> list[dict]:
         return self._files
 
-    @Property("QVariantList", constant=True)
+    @Property("QVariantList", constant=True)  # type: ignore[arg-type]
     def voices(self) -> list[str]:
         return KOKORO_VOICES
 
@@ -136,7 +135,7 @@ class AppBridge(QObject):
     def modelsReady(self) -> bool:
         return models_installed()
 
-    @Property("QVariantList", notify=modelsChanged)
+    @Property("QVariantList", notify=modelsChanged)  # type: ignore[arg-type]
     def models(self) -> list[dict]:
         return model_status()
 
@@ -177,7 +176,11 @@ class AppBridge(QObject):
         path, _ = QFileDialog.getOpenFileName(
             None,
             "Seleccionar Markdown",
-            str(Path(self._input_path) if Path(self._input_path).exists() else PROJECT_ROOT / "input"),
+            str(
+                Path(self._input_path)
+                if Path(self._input_path).exists()
+                else PROJECT_ROOT / "input"
+            ),
             "Markdown (*.md)",
         )
         if path:
@@ -188,7 +191,11 @@ class AppBridge(QObject):
         path = QFileDialog.getExistingDirectory(
             None,
             "Seleccionar carpeta con Markdown",
-            str(Path(self._input_path) if Path(self._input_path).exists() else PROJECT_ROOT / "input"),
+            str(
+                Path(self._input_path)
+                if Path(self._input_path).exists()
+                else PROJECT_ROOT / "input"
+            ),
         )
         if path:
             self._set_input_path(path)
@@ -375,7 +382,9 @@ class AppBridge(QObject):
     def saveWindowSize(self, width: int, height: int) -> None:
         self._window_width = int(width)
         self._window_height = int(height)
-        self.settings.update({"window_width": self._window_width, "window_height": self._window_height})
+        self.settings.update(
+            {"window_width": self._window_width, "window_height": self._window_height}
+        )
         self.settingsChanged.emit()
 
     def _set_input_path(self, path: str) -> None:
@@ -408,7 +417,9 @@ class AppBridge(QObject):
         self.currentFileChanged.emit()
 
     def _on_file_finished(self, index: int, output_path: str, elapsed: str) -> None:
-        self._update_file(index, status="Listo", outputPath=output_path, time=elapsed, message="MP3 generado")
+        self._update_file(
+            index, status="Listo", outputPath=output_path, time=elapsed, message="MP3 generado"
+        )
         self._elapsed_text = elapsed
         self.elapsedTextChanged.emit()
 

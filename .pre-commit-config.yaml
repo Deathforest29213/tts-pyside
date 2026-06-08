@@ -1,0 +1,33 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-merge-conflict
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: ruff check --fix
+        language: system
+        types_or: [python, pyi]
+
+      - id: ruff-format
+        name: ruff format
+        entry: ruff format
+        language: system
+        types_or: [python, pyi]
+
+      - id: mypy
+        name: mypy
+        entry: mypy --config-file mypy.ini .
+        language: system
+        pass_filenames: false
+
+default_stages: [pre-commit]
+ci:
+  autofix_prs: true
+  autofix_commit_msg: "chore(pre-commit.ci): auto fixes"
+  skip: [ruff-check, ruff-format, mypy]

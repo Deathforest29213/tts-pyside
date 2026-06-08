@@ -11,7 +11,8 @@ El motor principal es Kokoro local/offline y el motor alternativo es Edge TTS on
 ## Requisitos del sistema
 
 - Windows 10/11.
-- Python 3.12 recomendado.
+- Miniconda o Anaconda.
+- Python 3.12 dentro del entorno Conda `tts-pyside`.
 - Conexion a internet solo para instalacion inicial y descarga de modelos.
 - `ffmpeg.exe` disponible en el sistema.
 - Espacio libre recomendado: al menos 1 GB.
@@ -27,7 +28,7 @@ C:\ffmpeg\bin\ffmpeg.exe
 Si no lo detecta, se puede pasar manualmente:
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input --ffmpeg "C:\ruta\a\ffmpeg.exe"
+python main.py convert .\input --ffmpeg "C:\ruta\a\ffmpeg.exe"
 ```
 
 ## Estructura esperada
@@ -61,18 +62,40 @@ md2audio/
 El archivo `requirements.txt` debe incluir:
 
 ```text
-edge-tts>=7.0.0
-kokoro-onnx>=0.5.0
-PySide6>=6.7.0
-soundfile>=0.13.1
+edge-tts==7.2.8
+kokoro-onnx==0.5.0
+mypy==1.17.1
+pre-commit==4.3.0
+PySide6==6.11.1
+ruff==0.12.12
+soundfile==0.14.0
 ```
 
-Crear entorno virtual e instalar:
+Crear entorno Conda e instalar:
 
 ```powershell
 cd C:\ruta\a\md2audio
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
+conda env create -f environment.yml
+conda activate tts-pyside
+```
+
+Si el entorno ya existe:
+
+```powershell
+conda activate tts-pyside
+python -m pip install -r requirements.txt
+```
+
+Instalar hooks de calidad de codigo:
+
+```powershell
+pre-commit install
+```
+
+Ejecutar validacion completa manual:
+
+```powershell
+pre-commit run --all-files
 ```
 
 ## Modelos Kokoro
@@ -128,7 +151,7 @@ em_santa
 Listar voces:
 
 ```powershell
-.\.venv\Scripts\python main.py voices --engine kokoro --locale es
+python main.py voices --engine kokoro --locale es
 ```
 
 ### Edge TTS
@@ -140,7 +163,7 @@ Listar voces:
 Listar voces chilenas:
 
 ```powershell
-.\.venv\Scripts\python main.py voices --engine edge --locale es-CL
+python main.py voices --engine edge --locale es-CL
 ```
 
 ## Uso del CLI
@@ -148,7 +171,7 @@ Listar voces chilenas:
 ### Convertir un archivo
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input\archivo.md --out .\output
+python main.py convert .\input\archivo.md --out .\output
 ```
 
 Salida:
@@ -160,7 +183,7 @@ output\archivo.mp3
 ### Convertir una carpeta dentro de input
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input\NombreCarpeta --out .\output
+python main.py convert .\input\NombreCarpeta --out .\output
 ```
 
 Salida esperada:
@@ -173,13 +196,13 @@ input\NombreCarpeta\tema_2.md -> output\NombreCarpeta\tema_2.mp3
 ### Convertir una carpeta con subcarpetas
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input\NombreCarpeta --out .\output --recursive
+python main.py convert .\input\NombreCarpeta --out .\output --recursive
 ```
 
 ### Convertir todo input
 
 ```powershell
-.\.venv\Scripts\python main.py convert
+python main.py convert
 ```
 
 ### Forzar regeneracion
@@ -187,13 +210,13 @@ input\NombreCarpeta\tema_2.md -> output\NombreCarpeta\tema_2.mp3
 Usar cuando cambiaste voz, texto, velocidad, idioma o quieres rehacer todo:
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input\NombreCarpeta --out .\output --force
+python main.py convert .\input\NombreCarpeta --out .\output --force
 ```
 
 ### Usar Edge online
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input\archivo.md --out .\output --engine edge --voice es-CL-LorenzoNeural
+python main.py convert .\input\archivo.md --out .\output --engine edge --voice es-CL-LorenzoNeural
 ```
 
 ## Uso de la GUI QML
@@ -203,7 +226,7 @@ La interfaz grafica esta construida con PySide6 + QML/Qt Quick.
 Ejecutar:
 
 ```powershell
-.\.venv\Scripts\python gui_main.py
+python gui_main.py
 ```
 
 La GUI permite:
@@ -219,6 +242,27 @@ La GUI permite:
 - revisar logs;
 - cancelar conversion;
 - abrir output, MP3 y manifest.
+
+## Calidad de codigo
+
+El proyecto usa `pre-commit` con:
+
+- `check-merge-conflict`;
+- `end-of-file-fixer`;
+- `trailing-whitespace`;
+- `ruff check --fix`;
+- `ruff format`;
+- `mypy --config-file mypy.ini .`.
+
+La configuracion vive en:
+
+```text
+.pre-commit-config.yaml
+pyproject.toml
+mypy.ini
+```
+
+Los hooks locales usan las herramientas instaladas en el entorno Conda `tts-pyside`.
 
 ## Valores por defecto del proyecto
 
@@ -269,8 +313,8 @@ Si el texto y parametros no cambian, el CLI reutiliza chunks existentes.
 ## Replicar en otro dispositivo
 
 1. Copiar la carpeta `md2audio/` al nuevo equipo.
-2. Crear `.venv`.
-3. Instalar dependencias.
+2. Crear el entorno Conda desde `environment.yml`.
+3. Activar el entorno `tts-pyside`.
 4. Copiar o descargar los modelos Kokoro en `models/kokoro/`.
 5. Verificar `ffmpeg`.
 6. Ejecutar una prueba.
@@ -279,10 +323,10 @@ Comandos:
 
 ```powershell
 cd C:\ruta\a\md2audio
-python -m venv .venv
-.\.venv\Scripts\python -m pip install -r requirements.txt
-.\.venv\Scripts\python main.py voices --engine kokoro --locale es
-.\.venv\Scripts\python main.py convert .\input\ejemplo.md --out .\output
+conda env create -f environment.yml
+conda activate tts-pyside
+python main.py voices --engine kokoro --locale es
+python main.py convert .\input\ejemplo.md --out .\output
 ```
 
 ## Prueba minima
@@ -298,7 +342,7 @@ Este es un texto breve para probar la conversion local con Kokoro.
 Ejecutar:
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input\ejemplo.md --out .\output --force
+python main.py convert .\input\ejemplo.md --out .\output --force
 ```
 
 Resultado esperado:
@@ -312,13 +356,13 @@ output\ejemplo.mp3
 ### Falta edge-tts
 
 ```text
-Falta edge-tts. Instala dependencias con: pip install -r requirements.txt
+Falta edge-tts. Activa el entorno Conda e instala dependencias con: python -m pip install -r requirements.txt
 ```
 
 Solucion:
 
 ```powershell
-.\.venv\Scripts\python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 ### Faltan modelos Kokoro
@@ -345,7 +389,7 @@ where.exe ffmpeg
 O usar ruta manual:
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input --ffmpeg "C:\Program Files\Krita (x64)\bin\ffmpeg.exe"
+python main.py convert .\input --ffmpeg "C:\Program Files\Krita (x64)\bin\ffmpeg.exe"
 ```
 
 ### Kokoro tarda mucho
@@ -353,7 +397,7 @@ O usar ruta manual:
 Es normal en CPU. En este proyecto Kokoro prioriza calidad offline sobre velocidad. Para generar rapido con internet, usar Edge:
 
 ```powershell
-.\.venv\Scripts\python main.py convert .\input --engine edge --voice es-CL-LorenzoNeural
+python main.py convert .\input --engine edge --voice es-CL-LorenzoNeural
 ```
 
 ## Archivos que conviene respaldar
@@ -362,9 +406,13 @@ Para replicar el proyecto completo:
 
 ```text
 main.py
+environment.yml
 requirements.txt
 README.md
 CONSTRUCTION.md
+pyproject.toml
+mypy.ini
+.pre-commit-config.yaml
 src/
 models/kokoro/
 input/   opcional, si quieres llevar textos
@@ -374,6 +422,6 @@ output/  opcional, si quieres llevar audios generados
 No hace falta respaldar:
 
 ```text
-.venv/
+entornos Conda locales
 __pycache__/
 ```

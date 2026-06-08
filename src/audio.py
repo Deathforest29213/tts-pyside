@@ -5,7 +5,6 @@ import shutil
 import subprocess
 from pathlib import Path
 
-
 COMMON_FFMPEG_PATHS = [
     Path(r"C:\ffmpeg\bin\ffmpeg.exe"),
     Path(r"C:\ProgramData\chocolatey\bin\ffmpeg.exe"),

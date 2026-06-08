@@ -9,6 +9,7 @@ import shutil
 import time
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from .audio import combine_mp3_chunks, resolve_ffmpeg
 from .chunker import chunk_paragraphs
@@ -16,7 +17,6 @@ from .engines.base import SynthesisOptions, TTSEngine
 from .engines.edge import EdgeTTSEngine
 from .engines.kokoro import KokoroTTSEngine
 from .parser import parse_markdown_file
-
 
 DEFAULT_ENGINE = "kokoro"
 DEFAULT_EDGE_VOICE = "es-CL-LorenzoNeural"
@@ -58,20 +58,28 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(PROJECT_ROOT / "output"),
         help="Carpeta de salida. Por defecto usa ./output.",
     )
-    convert.add_argument("--engine", default=DEFAULT_ENGINE, choices=["kokoro", "edge"], help="Motor TTS.")
+    convert.add_argument(
+        "--engine", default=DEFAULT_ENGINE, choices=["kokoro", "edge"], help="Motor TTS."
+    )
     convert.add_argument("--voice", default=None, help="Voz TTS. Por defecto depende del motor.")
     convert.add_argument("--rate", default="+0%", help='Velocidad, por ejemplo "+0%%" o "-10%%".')
     convert.add_argument("--volume", default="+0%", help='Volumen, por ejemplo "+0%%".')
     convert.add_argument("--pitch", default="+0Hz", help='Tono, por ejemplo "+0Hz".')
-    convert.add_argument("--speed", type=float, default=1.0, help="Velocidad Kokoro, por ejemplo 0.9, 1.0 o 1.15.")
+    convert.add_argument(
+        "--speed", type=float, default=1.0, help="Velocidad Kokoro, por ejemplo 0.9, 1.0 o 1.15."
+    )
     convert.add_argument("--lang", default="es", help='Idioma Kokoro, por defecto "es".')
-    convert.add_argument("--max-chars", type=int, default=None, help="Maximo de caracteres por chunk.")
+    convert.add_argument(
+        "--max-chars", type=int, default=None, help="Maximo de caracteres por chunk."
+    )
     convert.add_argument(
         "--ffmpeg",
         default=None,
         help="Ruta opcional a ffmpeg.exe si no esta en PATH.",
     )
-    convert.add_argument("--recursive", action="store_true", help="Busca .md recursivamente en carpetas.")
+    convert.add_argument(
+        "--recursive", action="store_true", help="Busca .md recursivamente en carpetas."
+    )
     convert.add_argument(
         "--clean-temp",
         action="store_true",
@@ -84,8 +92,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     voices = subparsers.add_parser("voices", help="Lista voces disponibles.")
-    voices.add_argument("--engine", default=DEFAULT_ENGINE, choices=["kokoro", "edge"], help="Motor TTS.")
-    voices.add_argument("--locale", default="es", help='Filtro de idioma, por ejemplo "es" o "es-CL".')
+    voices.add_argument(
+        "--engine", default=DEFAULT_ENGINE, choices=["kokoro", "edge"], help="Motor TTS."
+    )
+    voices.add_argument(
+        "--locale", default="es", help='Filtro de idioma, por ejemplo "es" o "es-CL".'
+    )
 
     return parser
 
@@ -171,10 +183,12 @@ async def convert_file(
 
     previous_manifest = read_manifest(manifest_path)
     previous_chunks = {
-        item.get("index"): item for item in previous_manifest.get("chunks", [])
+        item.get("index"): item
+        for item in previous_manifest.get("chunks", [])
+        if isinstance(item, dict)
     }
 
-    manifest = {
+    manifest: dict[str, Any] = {
         "source": str(markdown_file),
         "output": str(final_path),
         "engine": engine.name,
@@ -236,9 +250,7 @@ async def convert_file(
     method = combine_mp3_chunks(chunk_paths, final_path, ffmpeg_path=ffmpeg_path)
     combine_elapsed = time.perf_counter() - combine_started
     total_elapsed = time.perf_counter() - file_started
-    generated_chunks = [
-        chunk for chunk in manifest["chunks"] if chunk.get("status") == "generated"
-    ]
+    generated_chunks = [chunk for chunk in manifest["chunks"] if chunk.get("status") == "generated"]
     generated_elapsed = sum(chunk.get("elapsed_seconds", 0.0) for chunk in generated_chunks)
     avg_generated_chunk_elapsed = (
         generated_elapsed / len(generated_chunks) if generated_chunks else 0.0
@@ -272,9 +284,7 @@ async def voices_command(args: argparse.Namespace) -> None:
     engine = get_engine(args.engine)
     voices = await engine.list_voices()
     locale = args.locale.lower()
-    filtered = [
-        voice for voice in voices if locale in voice.get("Locale", "").lower()
-    ]
+    filtered = [voice for voice in voices if locale in voice.get("Locale", "").lower()]
 
     for voice in filtered:
         short_name = voice.get("ShortName", "")
@@ -378,13 +388,14 @@ def write_manifest(path: Path, manifest: dict) -> None:
     )
 
 
-def read_manifest(path: Path) -> dict:
+def read_manifest(path: Path) -> dict[str, Any]:
     if not path.exists():
         return {}
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 def hash_text(text: str) -> str:

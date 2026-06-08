@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, TypeAlias
+
+VoiceInfo: TypeAlias = dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -26,5 +29,5 @@ class TTSEngine(ABC):
     ) -> None:
         raise NotImplementedError
 
-    async def list_voices(self) -> list[dict]:
+    async def list_voices(self) -> list[VoiceInfo]:
         return []

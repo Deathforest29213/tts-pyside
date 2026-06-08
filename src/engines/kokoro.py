@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
+from typing import Any
 
 from ..audio import resolve_ffmpeg
-from .base import SynthesisOptions, TTSEngine
-
+from .base import SynthesisOptions, TTSEngine, VoiceInfo
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MODEL_PATH = PROJECT_ROOT / "models" / "kokoro" / "kokoro-v1.0.onnx"
@@ -22,7 +22,7 @@ class KokoroTTSEngine(TTSEngine):
     ) -> None:
         self.model_path = model_path
         self.voices_path = voices_path
-        self._kokoro = None
+        self._kokoro: Any = None
 
     async def synthesize_to_file(
         self,
@@ -80,7 +80,7 @@ class KokoroTTSEngine(TTSEngine):
         finally:
             wav_path.unlink(missing_ok=True)
 
-    async def list_voices(self) -> list[dict]:
+    async def list_voices(self) -> list[VoiceInfo]:
         voices = self._load_model().get_voices()
         return [voice_info(voice) for voice in voices]
 
@@ -105,7 +105,7 @@ class KokoroTTSEngine(TTSEngine):
         return self._kokoro
 
 
-def voice_info(short_name: str) -> dict:
+def voice_info(short_name: str) -> VoiceInfo:
     locale = locale_from_voice(short_name)
     gender_code = short_name[1:2]
     gender = "Female" if gender_code == "f" else "Male" if gender_code == "m" else ""

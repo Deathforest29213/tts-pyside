@@ -3,7 +3,6 @@ from __future__ import annotations
 import html
 import re
 
-
 _SPACE_RE = re.compile(r"[ \t]+")
 _BLANK_RE = re.compile(r"\n{3,}")
 

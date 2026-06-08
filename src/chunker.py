@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-
 _SENTENCE_BOUNDARY_RE = re.compile(r"(?<=[.!?:;])\s+")
 
 
