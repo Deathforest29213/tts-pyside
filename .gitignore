@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.py[cod]
+output/*
+!output/.gitkeep
+input/*
+!input/.gitkeep
+models/kokoro/*.onnx
+models/kokoro/*.bin
