@@ -7,3 +7,4 @@ input/*
 !input/.gitkeep
 models/kokoro/*.onnx
 models/kokoro/*.bin
+config/gui_settings.json

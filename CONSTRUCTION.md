@@ -63,6 +63,7 @@ El archivo `requirements.txt` debe incluir:
 ```text
 edge-tts>=7.0.0
 kokoro-onnx>=0.5.0
+PySide6>=6.7.0
 soundfile>=0.13.1
 ```
 
@@ -194,6 +195,30 @@ Usar cuando cambiaste voz, texto, velocidad, idioma o quieres rehacer todo:
 ```powershell
 .\.venv\Scripts\python main.py convert .\input\archivo.md --out .\output --engine edge --voice es-CL-LorenzoNeural
 ```
+
+## Uso de la GUI QML
+
+La interfaz grafica esta construida con PySide6 + QML/Qt Quick.
+
+Ejecutar:
+
+```powershell
+.\.venv\Scripts\python gui_main.py
+```
+
+La GUI permite:
+
+- seleccionar archivo `.md`;
+- seleccionar carpeta con varios `.md`;
+- convertir con Kokoro offline;
+- elegir voz Kokoro;
+- ajustar velocidad;
+- ajustar max chunk;
+- administrar/descargar modelos Kokoro;
+- ver progreso global;
+- revisar logs;
+- cancelar conversion;
+- abrir output, MP3 y manifest.
 
 ## Valores por defecto del proyecto
 

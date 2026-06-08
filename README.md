@@ -17,6 +17,14 @@ Coloca tus archivos `.md` en `input/` y ejecuta. El motor por defecto es Kokoro 
 .\.venv\Scripts\python main.py convert
 ```
 
+## GUI QML
+
+Para abrir la interfaz grafica con PySide6 + QML:
+
+```powershell
+.\.venv\Scripts\python gui_main.py
+```
+
 Tambien puedes pasar un archivo o carpeta especifica:
 
 ```powershell
