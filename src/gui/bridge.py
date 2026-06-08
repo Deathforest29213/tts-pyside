@@ -4,6 +4,7 @@ import os
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDesktopServices
@@ -159,6 +160,10 @@ class AppBridge(QObject):
     def fileCount(self) -> int:
         return len(self._files)
 
+    @Property(int, notify=filesChanged)
+    def selectedFileCount(self) -> int:
+        return sum(1 for item in self._files if item.get("included", False))
+
     @Property(int, notify=selectedIndexChanged)
     def selectedIndex(self) -> int:
         return self._selected_index
@@ -265,9 +270,14 @@ class AppBridge(QObject):
         self._set_progress(0)
         self._current_file = ""
         self.currentFileChanged.emit()
+        selected_files = [
+            {**dict(item), "rowIndex": index}
+            for index, item in enumerate(self._files)
+            if item.get("included", False)
+        ]
 
         worker = ConversionWorker(
-            files=[dict(item) for item in self._files],
+            files=selected_files,
             voice=self._voice,
             speed=self._speed,
             max_chars=self._max_chars,
@@ -292,7 +302,7 @@ class AppBridge(QObject):
 
         self._conversion_worker = worker
         self._conversion_thread = thread
-        self._append_log("Conversion iniciada.")
+        self._append_log(f"Conversion iniciada con {len(selected_files)} archivos.")
 
     @Slot()
     def cancelConversion(self) -> None:
@@ -378,6 +388,29 @@ class AppBridge(QObject):
         self._selected_index = index
         self.selectedIndexChanged.emit()
 
+    @Slot(int)
+    def toggleFileForConversion(self, index: int) -> None:
+        if index < 0 or index >= len(self._files) or self._is_converting:
+            return
+        self._selected_index = index
+        updated = dict(self._files[index])
+        updated["included"] = not bool(updated.get("included", False))
+        self._files[index] = updated
+        self.selectedIndexChanged.emit()
+        self.filesChanged.emit()
+
+    @Slot()
+    def toggleAllFiles(self) -> None:
+        if self._is_converting:
+            return
+        include_all = self.selectedFileCount != len(self._files)
+        self._files = [{**dict(item), "included": include_all} for item in self._files]
+        self.filesChanged.emit()
+        if include_all:
+            self._append_log(f"Agregados {self.selectedFileCount} archivos a la conversion.")
+        else:
+            self._append_log("Todos los archivos fueron quitados de la conversion.")
+
     @Slot(int, int)
     def saveWindowSize(self, width: int, height: int) -> None:
         self._window_width = int(width)
@@ -405,6 +438,8 @@ class AppBridge(QObject):
             return f"No existe la entrada: {self._input_path}"
         if not self._files:
             return "No hay archivos .md para convertir."
+        if self.selectedFileCount == 0:
+            return "No hay archivos seleccionados para convertir."
         if not self.modelsReady:
             return "Faltan modelos Kokoro. Usa Administrar modelos."
         if not resolve_ffmpeg():
@@ -459,7 +494,7 @@ class AppBridge(QObject):
         self._is_converting = value
         self.convertingChanged.emit()
 
-    def _update_file(self, index: int, **changes: str) -> None:
+    def _update_file(self, index: int, **changes: Any) -> None:
         if index < 0 or index >= len(self._files):
             return
         updated = dict(self._files[index])

@@ -97,18 +97,19 @@ class ConversionWorker(QObject):
         batch_started = time.perf_counter()
 
         for index, item in enumerate(prepared):
+            row_index = int(item.get("rowIndex", index))
             if self._cancelled:
                 self._emit_cancelled_from(index)
                 return
 
             if item.get("error"):
-                self.fileError.emit(index, item["error"])
+                self.fileError.emit(row_index, item["error"])
                 self.log.emit(f"Error preparando {item['relativePath']}: {item['error']}")
                 completed_units += 1
                 self.progress.emit(int(completed_units * 100 / total_chunks))
                 continue
 
-            self.fileStarted.emit(index, item["relativePath"])
+            self.fileStarted.emit(row_index, item["relativePath"])
             self.log.emit(f"Generando archivo {index + 1}/{len(prepared)}: {item['relativePath']}")
 
             try:
@@ -117,17 +118,17 @@ class ConversionWorker(QObject):
                 )
                 completed_units += max(1, len(item["chunks"]))
                 self.progress.emit(int(completed_units * 100 / total_chunks))
-                self.fileFinished.emit(index, item["outputPath"], format_duration(elapsed))
+                self.fileFinished.emit(row_index, item["outputPath"], format_duration(elapsed))
                 self.log.emit(f"MP3 generado: {item['outputPath']}")
             except CancelledConversion:
                 self._cleanup_item(item)
-                self.fileCancelled.emit(index, "Cancelado")
+                self.fileCancelled.emit(row_index, "Cancelado")
                 self._emit_cancelled_from(index + 1)
                 self.cancelled.emit()
                 return
             except Exception as exc:
                 completed_units += max(1, len(item["chunks"]))
-                self.fileError.emit(index, str(exc))
+                self.fileError.emit(row_index, str(exc))
                 self.log.emit(f"Error en {item['relativePath']}: {exc}")
                 self.progress.emit(int(completed_units * 100 / total_chunks))
 
@@ -233,7 +234,8 @@ class ConversionWorker(QObject):
 
     def _emit_cancelled_from(self, start_index: int) -> None:
         for index in range(start_index, len(self.files)):
-            self.fileCancelled.emit(index, "Cancelado")
+            row_index = int(self.files[index].get("rowIndex", index))
+            self.fileCancelled.emit(row_index, "Cancelado")
         self.log.emit("Conversion cancelada.")
 
     @staticmethod

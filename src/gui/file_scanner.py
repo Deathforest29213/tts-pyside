@@ -27,6 +27,7 @@ def scan_markdown_files(input_path: Path, output_base_dir: Path, recursive: bool
                 "sourcePath": str(markdown_file),
                 "outputPath": str(output_path),
                 "manifestPath": str(manifest_path),
+                "included": True,
                 "time": "",
                 "message": "",
             }

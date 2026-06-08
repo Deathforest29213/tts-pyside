@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 import QtQuick.Layouts
+import QtQuick.Window
 import md2audio.style
 import "components" as Components
 
@@ -9,7 +10,8 @@ ApplicationWindow {
     id: window
     visible: true
     width: bridge.windowWidth
-    height: bridge.windowHeight
+    y: Screen.desktopAvailableY
+    height: Math.max(minimumHeight, Screen.desktopAvailableHeight)
     minimumWidth: 1040
     minimumHeight: 760
     title: "md2audio - Kokoro TTS"
@@ -178,6 +180,11 @@ ApplicationWindow {
             files: bridge.files
             selectedIndex: bridge.selectedIndex
             onRowSelected: bridge.selectFileRow(index)
+            onToggleFileRequested: bridge.toggleFileForConversion(index)
+            onToggleAllRequested: bridge.toggleAllFiles()
+            onOpenMp3Requested: bridge.openSelectedMp3()
+            onOpenManifestRequested: bridge.openSelectedManifest()
+            onOpenOutputRequested: bridge.openOutput()
         }
 
         Rectangle {
@@ -245,8 +252,8 @@ ApplicationWindow {
             Item { Layout.fillWidth: true }
 
             Components.PrimaryButton {
-                text: "Convertir"
-                enabled: !bridge.isConverting && bridge.modelsReady && bridge.ffmpegReady && bridge.fileCount > 0
+                text: "Convertir (" + bridge.selectedFileCount + ")"
+                enabled: !bridge.isConverting && bridge.modelsReady && bridge.ffmpegReady && bridge.selectedFileCount > 0
                 onClicked: bridge.startConversion()
             }
 
@@ -255,20 +262,6 @@ ApplicationWindow {
                 normalColor: Theme.warning
                 enabled: bridge.isConverting
                 onClicked: bridge.cancelConversion()
-            }
-
-            Components.PrimaryButton {
-                text: "Abrir MP3"
-                normalColor: "#3e4653"
-                enabled: bridge.selectedIndex >= 0
-                onClicked: bridge.openSelectedMp3()
-            }
-
-            Components.PrimaryButton {
-                text: "Abrir manifest"
-                normalColor: "#3e4653"
-                enabled: bridge.selectedIndex >= 0
-                onClicked: bridge.openSelectedManifest()
             }
 
             Components.PrimaryButton {
