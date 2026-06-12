@@ -11,11 +11,12 @@ from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import QFileDialog
 
 from ..audio import resolve_ffmpeg
+from ..conversion import validate_preflight
 from ..engines.kokoro import DEFAULT_MODEL_PATH
 from .file_scanner import mirror_output_path, scan_markdown_files
 from .model_manager import ModelDownloadWorker, model_status, models_installed
-from .settings import PROJECT_ROOT, GuiSettings
-from .workers import ConversionWorker
+from .settings import PRESETS, PROJECT_ROOT, GuiSettings, ProfileStore
+from .workers import ConversionWorker, VoicePreviewWorker
 
 KOKORO_VOICES = ["ef_dora", "em_alex", "em_santa"]
 
@@ -33,10 +34,14 @@ class AppBridge(QObject):
     modelsChanged = Signal()
     selectedIndexChanged = Signal()
     downloadProgressChanged = Signal()
+    downloadStatusChanged = Signal()
+    previewChanged = Signal()
+    profilesChanged = Signal()
 
     def __init__(self) -> None:
         super().__init__()
         self.settings = GuiSettings()
+        self.profiles = ProfileStore()
         self._input_path = str(self.settings.get("input_path"))
         self._output_base_path = str(self.settings.get("output_path"))
         self._voice = str(self.settings.get("voice", "em_santa"))
@@ -45,6 +50,8 @@ class AppBridge(QObject):
         self._recursive = bool(self.settings.get("recursive", False))
         self._force = bool(self.settings.get("force", False))
         self._clean_temp = bool(self.settings.get("clean_temp", False))
+        self._normalize_loudness = bool(self.settings.get("normalize_loudness", False))
+        self._selected_preset = str(self.settings.get("selected_preset", "Apuntes tecnicos"))
         self._window_width = int(self.settings.get("window_width", 1180))
         self._window_height = int(self.settings.get("window_height", 840))
 
@@ -52,6 +59,7 @@ class AppBridge(QObject):
         self._log_lines: list[str] = []
         self._progress = 0
         self._download_progress = 0
+        self._download_status = ""
         self._current_file = ""
         self._elapsed_text = "0s"
         self._is_converting = False
@@ -60,6 +68,10 @@ class AppBridge(QObject):
         self._conversion_worker: ConversionWorker | None = None
         self._download_thread: QThread | None = None
         self._download_worker: ModelDownloadWorker | None = None
+        self._preview_thread: QThread | None = None
+        self._preview_worker: VoicePreviewWorker | None = None
+        self._preview_path = ""
+        self._is_previewing = False
 
         self.scanInput()
         self._log_startup_state()
@@ -108,9 +120,21 @@ class AppBridge(QObject):
     def cleanTemp(self) -> bool:
         return self._clean_temp
 
+    @Property(bool, notify=settingsChanged)
+    def normalizeLoudness(self) -> bool:
+        return self._normalize_loudness
+
+    @Property("QVariantList", constant=True)  # type: ignore[arg-type]
+    def presets(self) -> list[str]:
+        return list(PRESETS.keys())
+
+    @Property(str, notify=settingsChanged)
+    def selectedPreset(self) -> str:
+        return self._selected_preset
+
     @Property(str, notify=logTextChanged)
     def logText(self) -> str:
-        return "\n".join(self._log_lines)
+        return "\n".join(reversed(self._log_lines))
 
     @Property(int, notify=progressChanged)
     def progress(self) -> int:
@@ -119,6 +143,26 @@ class AppBridge(QObject):
     @Property(int, notify=downloadProgressChanged)
     def downloadProgress(self) -> int:
         return self._download_progress
+
+    @Property(str, notify=downloadStatusChanged)
+    def downloadStatusText(self) -> str:
+        return self._download_status
+
+    @Property(bool, notify=previewChanged)
+    def isPreviewing(self) -> bool:
+        return self._is_previewing
+
+    @Property(bool, notify=previewChanged)
+    def previewReady(self) -> bool:
+        return bool(self._preview_path and Path(self._preview_path).exists())
+
+    @Property(str, notify=previewChanged)
+    def previewPath(self) -> str:
+        return self._preview_path
+
+    @Property("QVariantList", notify=profilesChanged)  # type: ignore[arg-type]
+    def profileNames(self) -> list[str]:
+        return self.profiles.names()
 
     @Property(str, notify=currentFileChanged)
     def currentFile(self) -> str:
@@ -162,7 +206,7 @@ class AppBridge(QObject):
 
     @Property(int, notify=filesChanged)
     def selectedFileCount(self) -> int:
-        return sum(1 for item in self._files if item.get("included", False))
+        return self._selected_file_count()
 
     @Property(int, notify=selectedIndexChanged)
     def selectedIndex(self) -> int:
@@ -265,6 +309,19 @@ class AppBridge(QObject):
         if error:
             self._append_log(error)
             return
+        preflight = validate_preflight(
+            input_path=Path(self._input_path),
+            output_path=self._resolved_output_path(),
+            selected_count=self._selected_file_count(),
+            ffmpeg_path=resolve_ffmpeg(),
+            models_ready=models_installed(),
+        )
+        for warning in preflight.warnings:
+            self._append_log(f"Aviso: {warning}")
+        if not preflight.ok:
+            for preflight_error in preflight.errors:
+                self._append_log(preflight_error)
+            return
 
         self._set_converting(True)
         self._set_progress(0)
@@ -284,6 +341,7 @@ class AppBridge(QObject):
             ffmpeg_path=resolve_ffmpeg(),
             force=self._force,
             clean_temp=self._clean_temp,
+            normalize_audio=self._normalize_loudness,
         )
         thread = QThread()
         worker.moveToThread(thread)
@@ -292,6 +350,7 @@ class AppBridge(QObject):
         worker.progress.connect(self._set_progress)
         worker.fileStarted.connect(self._on_file_started)
         worker.fileFinished.connect(self._on_file_finished)
+        worker.fileOmitted.connect(self._on_file_omitted)
         worker.fileError.connect(self._on_file_error)
         worker.fileCancelled.connect(self._on_file_cancelled)
         worker.finished.connect(self._on_conversion_finished)
@@ -317,7 +376,9 @@ class AppBridge(QObject):
             return
 
         self._download_progress = 0
+        self._download_status = ""
         self.downloadProgressChanged.emit()
+        self.downloadStatusChanged.emit()
 
         worker = ModelDownloadWorker()
         thread = QThread()
@@ -325,6 +386,7 @@ class AppBridge(QObject):
         thread.started.connect(worker.run)
         worker.log.connect(self._append_log)
         worker.progress.connect(self._set_download_progress)
+        worker.status.connect(self._set_download_status)
         worker.error.connect(self._on_download_error)
         worker.finished.connect(self._on_download_finished)
         worker.finished.connect(thread.quit)
@@ -381,6 +443,119 @@ class AppBridge(QObject):
             self.settings.set("clean_temp", value)
             self.settingsChanged.emit()
 
+    @Slot(bool)
+    def setNormalizeLoudness(self, value: bool) -> None:
+        if value != self._normalize_loudness:
+            self._normalize_loudness = value
+            self.settings.set("normalize_loudness", value)
+            self.settingsChanged.emit()
+
+    @Slot(str)
+    def applyPreset(self, name: str) -> None:
+        preset = PRESETS.get(name)
+        if not preset:
+            self._append_log(f"Preset no encontrado: {name}")
+            return
+
+        self._selected_preset = name
+        self._voice = str(preset["voice"])
+        self._speed = float(preset["speed"])
+        self._max_chars = int(preset["max_chars"])
+        self._recursive = bool(preset["recursive"])
+        self._force = bool(preset["force"])
+        self._normalize_loudness = bool(preset["normalize_loudness"])
+        self.settings.update(
+            {
+                "selected_preset": self._selected_preset,
+                "voice": self._voice,
+                "speed": self._speed,
+                "max_chars": self._max_chars,
+                "recursive": self._recursive,
+                "force": self._force,
+                "normalize_loudness": self._normalize_loudness,
+            }
+        )
+        self.settingsChanged.emit()
+        self.scanInput()
+        self._append_log(f"Preset aplicado: {name}")
+
+    @Slot(str)
+    def saveProfile(self, name: str) -> None:
+        try:
+            self.profiles.save_profile(name, self._profile_payload())
+        except ValueError as exc:
+            self._append_log(str(exc))
+            return
+        self.profilesChanged.emit()
+        self._append_log(f"Perfil guardado: {name.strip()}")
+
+    @Slot(str)
+    def loadProfile(self, name: str) -> None:
+        try:
+            profile = self.profiles.load_profile(name)
+        except ValueError as exc:
+            self._append_log(str(exc))
+            return
+
+        self._voice = str(profile.get("voice", self._voice))
+        self._input_path = str(profile.get("input_path", self._input_path))
+        self._output_base_path = str(profile.get("output_path", self._output_base_path))
+        self._speed = float(profile.get("speed", self._speed))
+        self._max_chars = int(profile.get("max_chars", self._max_chars))
+        self._recursive = bool(profile.get("recursive", self._recursive))
+        self._force = bool(profile.get("force", self._force))
+        self._clean_temp = bool(profile.get("clean_temp", self._clean_temp))
+        self._normalize_loudness = bool(profile.get("normalize_loudness", self._normalize_loudness))
+        self._selected_preset = str(profile.get("selected_preset", self._selected_preset))
+        self.settings.update(self._profile_payload())
+        self.inputPathChanged.emit()
+        self.outputPathChanged.emit()
+        self.settingsChanged.emit()
+        self.scanInput()
+        self._append_log(f"Perfil cargado: {name}")
+
+    @Slot()
+    def previewVoice(self) -> None:
+        if self._preview_thread:
+            self._append_log("Ya hay una prueba de voz en curso.")
+            return
+        if not self.modelsReady:
+            self._append_log("Faltan modelos Kokoro validos para probar voz.")
+            return
+        if not resolve_ffmpeg():
+            self._append_log("No se detecto ffmpeg para probar voz.")
+            return
+
+        output_path = PROJECT_ROOT / "output" / ".preview" / f"preview_{self._voice}.mp3"
+        worker = VoicePreviewWorker(
+            output_path=output_path,
+            voice=self._voice,
+            speed=self._speed,
+            ffmpeg_path=resolve_ffmpeg(),
+        )
+        thread = QThread()
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.log.connect(self._append_log)
+        worker.finished.connect(self._on_preview_finished)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        worker.error.connect(self._on_preview_error)
+        worker.error.connect(thread.quit)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_preview_thread)
+        self._preview_thread = thread
+        self._preview_worker = worker
+        self._is_previewing = True
+        self.previewChanged.emit()
+        thread.start()
+        self._append_log(f"Generando prueba de voz: {self._voice}")
+
+    @Slot()
+    def openPreview(self) -> None:
+        if self._preview_path:
+            self._open_path(Path(self._preview_path))
+
     @Slot(int)
     def selectFileRow(self, index: int) -> None:
         if index < -1 or index >= len(self._files):
@@ -407,7 +582,7 @@ class AppBridge(QObject):
         self._files = [{**dict(item), "included": include_all} for item in self._files]
         self.filesChanged.emit()
         if include_all:
-            self._append_log(f"Agregados {self.selectedFileCount} archivos a la conversion.")
+            self._append_log(f"Agregados {self._selected_file_count()} archivos a la conversion.")
         else:
             self._append_log("Todos los archivos fueron quitados de la conversion.")
 
@@ -458,6 +633,9 @@ class AppBridge(QObject):
         self._elapsed_text = elapsed
         self.elapsedTextChanged.emit()
 
+    def _on_file_omitted(self, index: int, message: str) -> None:
+        self._update_file(index, status="Omitido", message=message)
+
     def _on_file_error(self, index: int, message: str) -> None:
         self._update_file(index, status="Error", message=message)
 
@@ -482,6 +660,20 @@ class AppBridge(QObject):
         self._download_worker = None
         self._download_thread = None
 
+    def _on_preview_finished(self, path: str) -> None:
+        self._preview_path = path
+        self._is_previewing = False
+        self.previewChanged.emit()
+
+    def _on_preview_error(self, message: str) -> None:
+        self._append_log(f"Error generando prueba de voz: {message}")
+        self._is_previewing = False
+        self.previewChanged.emit()
+
+    def _clear_preview_thread(self) -> None:
+        self._preview_worker = None
+        self._preview_thread = None
+
     def _set_progress(self, value: int) -> None:
         self._progress = max(0, min(100, int(value)))
         self.progressChanged.emit()
@@ -489,6 +681,10 @@ class AppBridge(QObject):
     def _set_download_progress(self, value: int) -> None:
         self._download_progress = max(0, min(100, int(value)))
         self.downloadProgressChanged.emit()
+
+    def _set_download_status(self, value: str) -> None:
+        self._download_status = value
+        self.downloadStatusChanged.emit()
 
     def _set_converting(self, value: bool) -> None:
         self._is_converting = value
@@ -508,6 +704,9 @@ class AppBridge(QObject):
         self._append_log("Selecciona un archivo en la tabla primero.")
         return None
 
+    def _selected_file_count(self) -> int:
+        return sum(1 for item in self._files if item.get("included", False))
+
     def _append_log(self, message: str) -> None:
         stamp = datetime.now().strftime("%H:%M:%S")
         self._log_lines.append(f"{stamp}  {message}")
@@ -518,6 +717,20 @@ class AppBridge(QObject):
         self._append_log(f"Kokoro: {self.modelStatusText}")
         self._append_log(f"Voz: {self._voice}")
         self._append_log(f"FFmpeg: {resolve_ffmpeg() or 'no detectado'}")
+
+    def _profile_payload(self) -> dict[str, Any]:
+        return {
+            "input_path": self._input_path,
+            "output_path": self._output_base_path,
+            "voice": self._voice,
+            "speed": self._speed,
+            "max_chars": self._max_chars,
+            "recursive": self._recursive,
+            "force": self._force,
+            "clean_temp": self._clean_temp,
+            "normalize_loudness": self._normalize_loudness,
+            "selected_preset": self._selected_preset,
+        }
 
     @staticmethod
     def _open_path(path: Path) -> None:

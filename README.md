@@ -122,10 +122,14 @@ Desde la GUI puedes:
 - elegir voz Kokoro;
 - ajustar velocidad;
 - ajustar max chunk;
+- aplicar presets (`Apuntes tecnicos`, `Libro narrativo`, `Rapido`, `Calidad alta`);
+- guardar y cargar perfiles locales por proyecto;
 - seleccionar que archivos convertir;
+- probar la voz con una muestra corta;
+- normalizar volumen al final del MP3;
 - convertir a MP3;
 - abrir MP3, manifest u output;
-- descargar modelos Kokoro.
+- descargar modelos Kokoro con reintentos, progreso y validacion por tamano/hash.
 
 ## 7. Usar por terminal
 
@@ -159,6 +163,12 @@ Forzar regeneracion:
 python main.py convert .\input\Hidrosalino --out .\output --force
 ```
 
+Normalizar volumen al terminar:
+
+```powershell
+python main.py convert .\input\Hidrosalino --out .\output --normalize-loudness
+```
+
 Listar voces Kokoro en espanol:
 
 ```powershell
@@ -182,6 +192,12 @@ Ejecutar validaciones manualmente:
 pre-commit run --all-files
 ```
 
+Ejecutar tests unitarios:
+
+```powershell
+pytest -q
+```
+
 ## Archivos que no viajan en GitHub
 
 Estos archivos/carpetas estan ignorados:
@@ -195,6 +211,7 @@ models/kokoro/*.bin
 input/*
 output/*
 config/gui_settings.json
+config/profiles.json
 ```
 
 Despues de clonar en otro computador, debes crear el entorno, instalar ffmpeg, descargar/copiar modelos Kokoro y agregar tus propios `.md` en `input/`.

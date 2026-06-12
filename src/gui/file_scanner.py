@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..cli import (
+from ..conversion import (
     discover_markdown_files,
     output_dir_for_markdown,
     output_root_for_input,

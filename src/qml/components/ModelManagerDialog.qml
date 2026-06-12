@@ -94,6 +94,15 @@ Dialog {
             value: bridge.downloadProgress
         }
 
+        Text {
+            text: bridge.downloadStatusText
+            color: Theme.muted
+            font.pixelSize: 12
+            visible: text !== ""
+            Layout.fillWidth: true
+            elide: Text.ElideRight
+        }
+
         RowLayout {
             Layout.fillWidth: true
             spacing: 8

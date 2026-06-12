@@ -4,19 +4,16 @@ import asyncio
 import shutil
 import time
 from pathlib import Path
-from typing import Any
 
 from PySide6.QtCore import QObject, Signal, Slot
 
-from ..audio import combine_mp3_chunks
 from ..chunker import chunk_paragraphs
-from ..cli import (
-    can_reuse_chunk,
+from ..conversion import (
+    ConversionCallbacks,
+    ConversionResult,
+    convert_markdown_file,
     format_duration,
-    hash_text,
-    read_manifest,
     safe_stem,
-    write_manifest,
 )
 from ..engines.base import SynthesisOptions
 from ..engines.kokoro import KokoroTTSEngine
@@ -28,6 +25,7 @@ class ConversionWorker(QObject):
     progress = Signal(int)
     fileStarted = Signal(int, str)
     fileFinished = Signal(int, str, str)
+    fileOmitted = Signal(int, str)
     fileError = Signal(int, str)
     fileCancelled = Signal(int, str)
     finished = Signal()
@@ -42,6 +40,7 @@ class ConversionWorker(QObject):
         ffmpeg_path: str | None,
         force: bool,
         clean_temp: bool,
+        normalize_audio: bool,
     ) -> None:
         super().__init__()
         self.files = files
@@ -51,6 +50,7 @@ class ConversionWorker(QObject):
         self.ffmpeg_path = ffmpeg_path
         self.force = force
         self.clean_temp = clean_temp
+        self.normalize_audio = normalize_audio
         self._cancelled = False
 
     @Slot()
@@ -113,13 +113,17 @@ class ConversionWorker(QObject):
             self.log.emit(f"Generando archivo {index + 1}/{len(prepared)}: {item['relativePath']}")
 
             try:
-                elapsed = await self._convert_prepared_file(
+                result = await self._convert_prepared_file(
                     index, item, engine, options, total_chunks, completed_units
                 )
                 completed_units += max(1, len(item["chunks"]))
                 self.progress.emit(int(completed_units * 100 / total_chunks))
-                self.fileFinished.emit(row_index, item["outputPath"], format_duration(elapsed))
-                self.log.emit(f"MP3 generado: {item['outputPath']}")
+                if result.status == "omitted":
+                    self.fileOmitted.emit(row_index, result.message)
+                    self.log.emit(f"Omitido {item['relativePath']}: {result.message}")
+                else:
+                    self.fileFinished.emit(row_index, str(result.output_path), result.elapsed_text)
+                    self.log.emit(f"MP3 generado: {result.output_path}")
             except CancelledConversion:
                 self._cleanup_item(item)
                 self.fileCancelled.emit(row_index, "Cancelado")
@@ -145,88 +149,35 @@ class ConversionWorker(QObject):
         options: SynthesisOptions,
         total_chunks: int,
         completed_units: int,
-    ) -> float:
-        started = time.perf_counter()
+    ) -> ConversionResult:
         source_path = Path(item["sourcePath"])
         output_path = Path(item["outputPath"])
-        output_dir = output_path.parent
-        stem = safe_stem(source_path.stem)
-        temp_dir = output_dir / ".chunks" / stem
-        temp_dir.mkdir(parents=True, exist_ok=True)
-        manifest_path = temp_dir / "manifest.json"
+        estimated_chunks = max(1, len(item["chunks"]))
 
-        previous_manifest = read_manifest(manifest_path)
-        previous_chunks = {
-            chunk.get("index"): chunk for chunk in previous_manifest.get("chunks", [])
-        }
-        manifest: dict[str, Any] = {
-            "source": str(source_path),
-            "output": str(output_path),
-            "engine": "kokoro",
-            "voice": options.voice,
-            "speed": options.speed,
-            "language": options.language,
-            "max_chars": self.max_chars,
-            "source_mtime": source_path.stat().st_mtime,
-            "chunk_count": len(item["chunks"]),
-            "chunks": [],
-        }
-
-        chunk_paths: list[Path] = []
-        for chunk_index, chunk in enumerate(item["chunks"], start=1):
+        def chunk_done(chunk_index: int, _chunk_count: int) -> None:
             if self._cancelled:
-                raise CancelledConversion()
-
-            chunk_path = temp_dir / f"{chunk_index:04d}.mp3"
-            chunk_paths.append(chunk_path)
-            chunk_hash = hash_text(chunk)
-            reusable = can_reuse_chunk(
-                chunk_path=chunk_path,
-                chunk_hash=chunk_hash,
-                previous_chunk=previous_chunks.get(chunk_index, {}),
-                previous_manifest=previous_manifest,
-                current_manifest=manifest,
+                return
+            self.progress.emit(
+                int((completed_units + min(chunk_index, estimated_chunks)) * 100 / total_chunks)
             )
-
-            elapsed = 0.0
-            status = "reused"
-            if self.force or not reusable:
-                status = "generated"
-                self.log.emit(f"Chunk {chunk_index}/{len(item['chunks'])}: generando...")
-                chunk_started = time.perf_counter()
-                await engine.synthesize_to_file(chunk, chunk_path, options)
-                elapsed = time.perf_counter() - chunk_started
-                self.log.emit(
-                    f"Chunk {chunk_index}/{len(item['chunks'])}: ok ({format_duration(elapsed)})"
-                )
-            else:
-                self.log.emit(f"Chunk {chunk_index}/{len(item['chunks'])}: reutilizado")
-
-            manifest["chunks"].append(
-                {
-                    "index": chunk_index,
-                    "path": str(chunk_path),
-                    "chars": len(chunk),
-                    "hash": chunk_hash,
-                    "status": status,
-                    "elapsed_seconds": round(elapsed, 3),
-                }
-            )
-            write_manifest(manifest_path, manifest)
-            self.progress.emit(int((completed_units + chunk_index) * 100 / total_chunks))
 
         if self._cancelled:
             raise CancelledConversion()
 
-        method = combine_mp3_chunks(chunk_paths, output_path, ffmpeg_path=self.ffmpeg_path)
-        manifest["combine_method"] = method
-        manifest["total_elapsed_seconds"] = round(time.perf_counter() - started, 3)
-        write_manifest(manifest_path, manifest)
-
-        if self.clean_temp:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
-        return time.perf_counter() - started
+        result = await convert_markdown_file(
+            markdown_file=source_path,
+            output_path=output_path,
+            engine=engine,
+            options=options,
+            max_chars=self.max_chars,
+            force=self.force,
+            clean_temp=self.clean_temp,
+            callbacks=ConversionCallbacks(log=self.log.emit, chunk_done=chunk_done),
+            normalize_audio=self.normalize_audio,
+        )
+        if self._cancelled:
+            raise CancelledConversion()
+        return result
 
     @Slot()
     def cancel(self) -> None:
@@ -249,3 +200,48 @@ class ConversionWorker(QObject):
 
 class CancelledConversion(Exception):
     pass
+
+
+class VoicePreviewWorker(QObject):
+    log = Signal(str)
+    finished = Signal(str)
+    error = Signal(str)
+
+    def __init__(
+        self,
+        output_path: Path,
+        voice: str,
+        speed: float,
+        ffmpeg_path: str | None,
+    ) -> None:
+        super().__init__()
+        self.output_path = output_path
+        self.voice = voice
+        self.speed = speed
+        self.ffmpeg_path = ffmpeg_path
+
+    @Slot()
+    def run(self) -> None:
+        try:
+            asyncio.run(self._run_async())
+        except Exception as exc:  # pragma: no cover - surfaced in GUI
+            self.error.emit(str(exc))
+
+    async def _run_async(self) -> None:
+        self.output_path.parent.mkdir(parents=True, exist_ok=True)
+        engine = KokoroTTSEngine()
+        options = SynthesisOptions(
+            voice=self.voice,
+            speed=self.speed,
+            language="es",
+            ffmpeg_path=self.ffmpeg_path,
+        )
+        sample = (
+            "Esta es una prueba de voz para md2audio. "
+            "La lectura debe sonar clara, natural y adecuada para estudiar."
+        )
+        started = time.perf_counter()
+        await engine.synthesize_to_file(sample, self.output_path, options)
+        elapsed = format_duration(time.perf_counter() - started)
+        self.log.emit(f"Prueba de voz generada en {elapsed}: {self.output_path}")
+        self.finished.emit(str(self.output_path))

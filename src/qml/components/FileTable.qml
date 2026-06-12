@@ -25,6 +25,7 @@ Rectangle {
         if (status === "Generando") return Theme.accent
         if (status === "Error") return Theme.error
         if (status === "Cancelado") return Theme.warning
+        if (status === "Omitido") return Theme.warning
         return Theme.pending
     }
 

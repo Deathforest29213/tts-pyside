@@ -7,7 +7,7 @@ from .normalizer import prepare_paragraph
 
 _FENCED_CODE_RE = re.compile(r"(^|\n)(```|~~~).*?(\n\2)(?=\n|$)", re.DOTALL)
 _HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
-_YAML_FRONT_MATTER_RE = re.compile(r"\A---\s*\n.*?\n---\s*(?:\n|$)", re.DOTALL)
+_YAML_FRONT_MATTER_RE = re.compile(r"\A\s*---\s*\n.*?\n---\s*(?:\n|$)", re.DOTALL)
 _IMAGE_RE = re.compile(r"!\[([^\]]*)\]\([^)]+\)")
 _LINK_RE = re.compile(r"\[([^\]]+)\]\([^)]+\)")
 _REFERENCE_LINK_RE = re.compile(r"\[([^\]]+)\]\[[^\]]*\]")

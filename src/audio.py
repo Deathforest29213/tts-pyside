@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Any
 
 COMMON_FFMPEG_PATHS = [
     Path(r"C:\ffmpeg\bin\ffmpeg.exe"),
@@ -37,6 +38,84 @@ def combine_mp3_chunks(
 
     _combine_binary(chunk_paths, output_path)
     return "binary-fallback"
+
+
+def normalize_loudness(
+    audio_path: Path,
+    ffmpeg_path: str | Path | None = None,
+) -> bool:
+    ffmpeg_exe = resolve_ffmpeg(ffmpeg_path)
+    if not ffmpeg_exe or not audio_path.exists():
+        return False
+
+    temp_path = audio_path.with_suffix(".normalized.mp3")
+    try:
+        subprocess.run(
+            [
+                ffmpeg_exe,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-i",
+                str(audio_path),
+                "-af",
+                "loudnorm=I=-16:TP=-1.5:LRA=11",
+                "-codec:a",
+                "libmp3lame",
+                "-q:a",
+                "2",
+                str(temp_path),
+            ],
+            check=True,
+        )
+        temp_path.replace(audio_path)
+        return True
+    except subprocess.CalledProcessError:
+        temp_path.unlink(missing_ok=True)
+        return False
+
+
+def write_mp3_metadata(audio_path: Path, metadata: dict[str, Any]) -> bool:
+    if not audio_path.exists():
+        return False
+
+    try:
+        from mutagen.easyid3 import EasyID3
+        from mutagen.id3 import COMM, ID3, ID3NoHeaderError
+    except ImportError:
+        return False
+
+    try:
+        tags = EasyID3(audio_path)
+    except ID3NoHeaderError:
+        tags = EasyID3()
+
+    mapping = {
+        "title": "title",
+        "author": "artist",
+        "album": "album",
+        "date": "date",
+    }
+    for source_key, tag_key in mapping.items():
+        value = metadata.get(source_key)
+        if value:
+            tags[tag_key] = [str(value)]
+
+    tags.save(audio_path)
+
+    comment_parts = []
+    for key in ("engine", "voice", "chapter"):
+        value = metadata.get(key)
+        if value:
+            comment_parts.append(f"{key}: {value}")
+    if comment_parts:
+        id3 = ID3(audio_path)
+        id3.delall("COMM")
+        id3.add(COMM(encoding=3, lang="spa", desc="md2audio", text=" | ".join(comment_parts)))
+        id3.save(audio_path)
+
+    return True
 
 
 def resolve_ffmpeg(ffmpeg_path: str | Path | None = None) -> str | None:

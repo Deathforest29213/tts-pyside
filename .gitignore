@@ -11,3 +11,4 @@ input/*
 models/kokoro/*.onnx
 models/kokoro/*.bin
 config/gui_settings.json
+config/profiles.json
