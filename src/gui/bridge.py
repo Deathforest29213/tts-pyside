@@ -357,6 +357,7 @@ class AppBridge(QObject):
         worker.finished.connect(thread.quit)
         worker.finished.connect(worker.deleteLater)
         thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._clear_conversion_thread)
         thread.start()
 
         self._conversion_worker = worker
@@ -644,9 +645,11 @@ class AppBridge(QObject):
 
     def _on_conversion_finished(self) -> None:
         self._set_converting(False)
+        self._append_log("Conversion finalizada.")
+
+    def _clear_conversion_thread(self) -> None:
         self._conversion_worker = None
         self._conversion_thread = None
-        self._append_log("Conversion finalizada.")
 
     def _on_download_error(self, message: str) -> None:
         self._append_log(f"Error descargando modelos: {message}")
